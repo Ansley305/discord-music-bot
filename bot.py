@@ -3,6 +3,8 @@ import os
 import yt_dlp as youtube_dl  # Use yt-dlp instead of youtube_dl
 from discord.ext import commands
 from dotenv import load_dotenv
+from flask import Flask
+import threading
 
 # Load environment variables from .env file
 load_dotenv()
@@ -18,6 +20,16 @@ if not TOKEN:
 intents = discord.Intents.default()
 intents.message_content = True  # Required for reading messages
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Initialize Flask web server (only for keeping the app alive)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=3000)
 
 # FFMPEG options
 FFMPEG_OPTIONS = {'options': '-vn'}
@@ -97,6 +109,9 @@ async def stop(ctx):
         await ctx.send("⏹️ Stopped playback.")
     else:
         await ctx.send("❌ Nothing is playing!")
+
+# Run the Flask server in a separate thread
+threading.Thread(target=run_flask).start()
 
 # Run the bot
 bot.run(TOKEN)
