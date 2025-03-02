@@ -53,11 +53,11 @@ async def play(ctx, url):
     if voice_client is None or not voice_client.is_connected():
         voice_client = await ctx.author.voice.channel.connect()
 
-    # YouTube audio extraction options
+    # Correct postprocessor key for yt-dlp
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
-            'key': 'FFmpegAudioFile',  # Corrected postprocessor key
+            'key': 'FFmpegAudioConvertor',  # Correct postprocessor key
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
