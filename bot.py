@@ -5,6 +5,7 @@ import os  # For environment variables
 import asyncio
 from flask import Flask  # Keep-alive server
 import threading
+from asyncio import sleep
 
 # 🔹 Flask keep-alive web server for UptimeRobot
 app = Flask(__name__)
@@ -36,7 +37,7 @@ async def join(ctx):
     global voice_client
     if ctx.author.voice:
         channel = ctx.author.voice.channel
-        voice_client = await channel.connect()
+        await reconnect_voice_channel(channel)  # Call the reconnect function
         await ctx.send("✅ Joined the voice channel!")
     else:
         await ctx.send("❌ You must be in a voice channel to use this command.")
@@ -51,13 +52,13 @@ async def play(ctx, url):
         return
 
     if voice_client is None or not voice_client.is_connected():
-        voice_client = await ctx.author.voice.channel.connect()
+        await reconnect_voice_channel(ctx.author.voice.channel)
 
-    # Correct postprocessor key for yt-dlp
+    # YouTube audio extraction options
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
-            'key': 'FFmpegAudioConvertor',  # Correct postprocessor key
+            'key': 'FFmpegAudioFile',
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
@@ -85,6 +86,25 @@ async def stop(ctx):
 @bot.command()
 async def ping(ctx):
     await ctx.send("🏓 Pong! Bot is online.")
+
+# 🔹 Reconnect voice channel if needed
+async def reconnect_voice_channel(channel):
+    global voice_client
+    if voice_client is not None:
+        await voice_client.disconnect()
+        await sleep(2)  # Wait a bit before reconnecting
+    voice_client = await channel.connect()
+
+# 🔹 Handle voice state update (for disconnects)
+@bot.event
+async def on_voice_state_update(member, before, after):
+    global voice_client
+    if before.channel != after.channel:  # Check if the bot got disconnected
+        if voice_client:
+            await voice_client.disconnect()
+            voice_client = None
+        if after.channel:
+            voice_client = await after.channel.connect()
 
 @bot.event
 async def on_ready():
