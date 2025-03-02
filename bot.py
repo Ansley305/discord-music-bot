@@ -15,12 +15,15 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# FFmpeg options for yt-dlp
+# FFmpeg options for yt-dlp (Updated with cookies & rate limiting)
 ydl_opts = {
     'format': 'bestaudio/best',
     'outtmpl': 'downloads/%(id)s.%(ext)s',
     'quiet': True,
     'noplaylist': True,
+    'cookiefile': 'cookies.txt',  # Use YouTube cookies
+    'sleep_interval': 5,  # Delay to avoid rate limits
+    'max_sleep_interval': 10,
 }
 
 # Dummy Flask app to bind to a port
@@ -50,15 +53,18 @@ async def play(ctx, url: str):
         await ctx.invoke(join)
 
     # Set up the audio stream
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        url2 = info['formats'][0]['url']
-        voice_client = ctx.voice_client
+    try:
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            url2 = info['formats'][0]['url']
+            voice_client = ctx.voice_client
 
-        # Play the audio stream
-        voice_client.play(discord.FFmpegPCMAudio(url2))
+            # Play the audio stream
+            voice_client.play(discord.FFmpegPCMAudio(url2))
 
-    await ctx.send(f"Now playing: {info['title']}")
+        await ctx.send(f"Now playing: {info['title']}")
+    except youtube_dl.utils.DownloadError as e:
+        await ctx.send(f"Error: {str(e)}\nTry using another link or checking your cookies file.")
 
 # Command to pause audio
 @bot.command()
