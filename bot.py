@@ -6,7 +6,7 @@ import asyncio
 from flask import Flask  # Keep-alive server
 import threading
 
-# Set up Flask keep-alive web server
+# 🔹 Flask keep-alive web server for UptimeRobot
 app = Flask(__name__)
 
 @app.route('/')
@@ -20,28 +20,38 @@ def keep_alive():
     server = threading.Thread(target=run)
     server.start()
 
-# Read the bot token from environment variables
+# 🔹 Read the bot token from Render's environment variables
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-# Set up bot with required intents
+# 🔹 Set up bot with intents
 intents = discord.Intents.default()
-intents.voice_states = True  # Allow voice channel interactions
+intents.message_content = True  # Required for reading messages
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 voice_client = None  # Global voice client variable
 
-async def play_audio(ctx, url):
+# 🔹 Command to join a voice channel (for debugging)
+@bot.command()
+async def join(ctx):
+    global voice_client
+    if ctx.author.voice:
+        channel = ctx.author.voice.channel
+        voice_client = await channel.connect()
+        await ctx.send("✅ Joined the voice channel!")
+    else:
+        await ctx.send("❌ You must be in a voice channel to use this command.")
+
+# 🔹 Play music from YouTube
+@bot.command()
+async def play(ctx, url):
     global voice_client
 
-    # Check if user is in a voice channel
     if not ctx.author.voice:
-        await ctx.send("You must be in a voice channel to use this command.")
+        await ctx.send("❌ You must be in a voice channel to play music.")
         return
 
-    # Join the user's voice channel if not already connected
     if voice_client is None or not voice_client.is_connected():
-        voice_channel = ctx.author.voice.channel
-        voice_client = await voice_channel.connect()
+        voice_client = await ctx.author.voice.channel.connect()
 
     # YouTube audio extraction options
     ydl_opts = {
@@ -51,20 +61,16 @@ async def play_audio(ctx, url):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
         'quiet': True
     }
 
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        url2 = info['formats'][0]['url']
+        url2 = info['url']
         voice_client.play(discord.FFmpegPCMAudio(url2))
+        await ctx.send(f"🎵 Now playing: {info['title']}")
 
-@bot.command()
-async def play(ctx, url):
-    await play_audio(ctx, url)
-    await ctx.send(f"🎵 Now playing: {url}")
-
+# 🔹 Stop music and disconnect
 @bot.command()
 async def stop(ctx):
     global voice_client
@@ -72,13 +78,20 @@ async def stop(ctx):
         voice_client.stop()
     if voice_client:
         await voice_client.disconnect()
+        voice_client = None
+        await ctx.send("⏹ Stopped music and left the channel.")
+
+# 🔹 Check if bot is responding
+@bot.command()
+async def ping(ctx):
+    await ctx.send("🏓 Pong! Bot is online.")
 
 @bot.event
 async def on_ready():
     print(f'✅ Logged in as {bot.user}')
 
-# Start the keep-alive server
+# 🔹 Start keep-alive server to prevent Render from sleeping
 keep_alive()
 
-# Run the bot with the token from environment variables
+# 🔹 Run the bot with token from environment variable
 bot.run(TOKEN)
