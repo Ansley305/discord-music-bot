@@ -1,7 +1,12 @@
+import os
 import discord
 from discord.ext import commands
 import yt_dlp as youtube_dl
 import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables from a .env file (for security, avoid hardcoding the bot token)
+load_dotenv()
 
 # Initialize the bot
 intents = discord.Intents.default()
@@ -106,8 +111,11 @@ async def current(ctx):
     else:
         await ctx.send("No song is currently playing.")
 
-# Bot token
-TOKEN = "your-bot-token-here"
+# Bot token (use an environment variable for security)
+TOKEN = os.getenv('DISCORD_TOKEN')
 
 # Start the bot
-bot.run(TOKEN)
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("Error: No bot token found. Please ensure the DISCORD_TOKEN environment variable is set.")
