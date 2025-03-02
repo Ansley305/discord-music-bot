@@ -1,5 +1,12 @@
+<<<<<<< HEAD
 discord.py
 yt-dlp
 ffmpeg
 python-dotenv
+=======
+discord.py
+yt-dlp
+ffmpeg
+python-dotenv
+>>>>>>> f746529217cfdeef2786b21a9fe7dadd8c330845
 flask
