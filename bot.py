@@ -1,28 +1,44 @@
 import discord
 from discord.ext import commands
 import yt_dlp as youtube_dl
-import os  # Import os module to read environment variables
+import os  # For environment variables
 import asyncio
+from flask import Flask  # Keep-alive server
+import threading
 
-# Read bot token from Render's environment variable
+# Set up Flask keep-alive web server
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run():
+    app.run(host="0.0.0.0", port=8080)
+
+def keep_alive():
+    server = threading.Thread(target=run)
+    server.start()
+
+# Read the bot token from environment variables
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 
-# Bot setup
+# Set up bot with required intents
 intents = discord.Intents.default()
-intents.voice_states = True  # Allow bot to join voice channels
+intents.voice_states = True  # Allow voice channel interactions
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Track voice client state
-voice_client = None
-voice_channel = None
+voice_client = None  # Global voice client variable
 
 async def play_audio(ctx, url):
-    global voice_client, voice_channel
+    global voice_client
 
+    # Check if user is in a voice channel
     if not ctx.author.voice:
         await ctx.send("You must be in a voice channel to use this command.")
         return
 
+    # Join the user's voice channel if not already connected
     if voice_client is None or not voice_client.is_connected():
         voice_channel = ctx.author.voice.channel
         voice_client = await voice_channel.connect()
@@ -47,7 +63,7 @@ async def play_audio(ctx, url):
 @bot.command()
 async def play(ctx, url):
     await play_audio(ctx, url)
-    await ctx.send(f"Now playing: {url}")
+    await ctx.send(f"🎵 Now playing: {url}")
 
 @bot.command()
 async def stop(ctx):
@@ -59,7 +75,10 @@ async def stop(ctx):
 
 @bot.event
 async def on_ready():
-    print(f'Logged in as {bot.user}')
+    print(f'✅ Logged in as {bot.user}')
 
-# Run bot with token from environment variable
+# Start the keep-alive server
+keep_alive()
+
+# Run the bot with the token from environment variables
 bot.run(TOKEN)
