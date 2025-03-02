@@ -1,118 +1,113 @@
 import discord
 from discord.ext import commands
 import yt_dlp as youtube_dl
-import os  # For environment variables
 import asyncio
-from flask import Flask  # Keep-alive server
-import threading
-from asyncio import sleep
 
-# 🔹 Flask keep-alive web server for UptimeRobot
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot is alive!"
-
-def run():
-    app.run(host="0.0.0.0", port=8080)
-
-def keep_alive():
-    server = threading.Thread(target=run)
-    server.start()
-
-# 🔹 Read the bot token from Render's environment variables
-TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-
-# 🔹 Set up bot with intents
+# Initialize the bot
 intents = discord.Intents.default()
-intents.message_content = True  # Required for reading messages
+intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-voice_client = None  # Global voice client variable
+# FFmpeg options for yt-dlp
+ydl_opts = {
+    'format': 'bestaudio/best',
+    'outtmpl': 'downloads/%(id)s.%(ext)s',
+    'quiet': True,
+    'noplaylist': True,
+}
 
-# 🔹 Command to join a voice channel (for debugging)
+# Command to join a voice channel
 @bot.command()
 async def join(ctx):
-    global voice_client
-    if ctx.author.voice:
-        channel = ctx.author.voice.channel
-        await reconnect_voice_channel(channel)  # Call the reconnect function
-        await ctx.send("✅ Joined the voice channel!")
-    else:
-        await ctx.send("❌ You must be in a voice channel to use this command.")
-
-# 🔹 Play music from YouTube
-@bot.command()
-async def play(ctx, url):
-    global voice_client
-
-    if not ctx.author.voice:
-        await ctx.send("❌ You must be in a voice channel to play music.")
+    channel = ctx.author.voice.channel
+    if not channel:
+        await ctx.send("You need to join a voice channel first!")
         return
+    await channel.connect()
 
-    if voice_client is None or not voice_client.is_connected():
-        await reconnect_voice_channel(ctx.author.voice.channel)
+# Command to play a YouTube video/audio
+@bot.command()
+async def play(ctx, url: str):
+    # Check if the bot is connected to a voice channel
+    if not ctx.voice_client:
+        await ctx.invoke(join)
 
-    # YouTube audio extraction options
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegAudioFile',  # Correct key
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'quiet': True
-    }
-
+    # Set up the audio stream
     with youtube_dl.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
-        url2 = info['url']
-        voice_client.play(discord.FFmpegPCMAudio(url2))
-        await ctx.send(f"🎵 Now playing: {info['title']}")
+        url2 = info['formats'][0]['url']
+        voice_client = ctx.voice_client
 
-# 🔹 Stop music and disconnect
+        # Play the audio stream
+        voice_client.play(discord.FFmpegPCMAudio(url2))
+
+    await ctx.send(f"Now playing: {info['title']}")
+
+# Command to pause audio
 @bot.command()
-async def stop(ctx):
-    global voice_client
+async def pause(ctx):
+    voice_client = ctx.voice_client
+    if voice_client and voice_client.is_playing():
+        voice_client.pause()
+        await ctx.send("Audio paused.")
+    else:
+        await ctx.send("No audio is currently playing.")
+
+# Command to resume audio
+@bot.command()
+async def resume(ctx):
+    voice_client = ctx.voice_client
+    if voice_client and voice_client.is_paused():
+        voice_client.resume()
+        await ctx.send("Audio resumed.")
+    else:
+        await ctx.send("Audio is not paused.")
+
+# Command to skip the current song
+@bot.command()
+async def skip(ctx):
+    voice_client = ctx.voice_client
     if voice_client and voice_client.is_playing():
         voice_client.stop()
+        await ctx.send("Skipped the current song.")
+    else:
+        await ctx.send("No audio is currently playing.")
+
+# Command to stop the bot and disconnect from the voice channel
+@bot.command()
+async def stop(ctx):
+    voice_client = ctx.voice_client
     if voice_client:
         await voice_client.disconnect()
-        voice_client = None
-        await ctx.send("⏹ Stopped music and left the channel.")
+        await ctx.send("Disconnected from voice channel.")
+    else:
+        await ctx.send("Bot is not connected to any voice channel.")
 
-# 🔹 Check if bot is responding
-@bot.command()
-async def ping(ctx):
-    await ctx.send("🏓 Pong! Bot is online.")
-
-# 🔹 Reconnect voice channel if needed
-async def reconnect_voice_channel(channel):
-    global voice_client
-    if voice_client is not None:
-        await voice_client.disconnect()
-        await sleep(2)  # Wait a bit before reconnecting
-    voice_client = await channel.connect()
-
-# 🔹 Handle voice state update (for disconnects)
+# Event to handle voice state updates and reconnect if necessary
 @bot.event
 async def on_voice_state_update(member, before, after):
-    global voice_client
-    if before.channel != after.channel:  # Check if the bot got disconnected
-        if voice_client:
-            await voice_client.disconnect()
-            voice_client = None
-        if after.channel:
-            if not voice_client or not voice_client.is_connected():  # Check if bot is not already connected
-                voice_client = await after.channel.connect()
+    if member.id == bot.user.id:
+        if after.channel is None:
+            # If the bot was disconnected from the voice channel, reconnect
+            await member.guild.voice_client.connect()
 
-@bot.event
-async def on_ready():
-    print(f'✅ Logged in as {bot.user}')
+# Command to queue a song (for later implementation of playlists and queues)
+@bot.command()
+async def queue(ctx, url: str):
+    # A placeholder for queuing songs (implement playlist/queue later)
+    await ctx.send(f"Queued song: {url}")
 
-# 🔹 Start keep-alive server to prevent Render from sleeping
-keep_alive()
+# Command to display the bot's current playing song
+@bot.command()
+async def current(ctx):
+    voice_client = ctx.voice_client
+    if voice_client and voice_client.is_playing():
+        await ctx.send(f"Currently playing: {voice_client.source.title}")
+    else:
+        await ctx.send("No song is currently playing.")
 
-# 🔹 Run the bot with token from environment variable
+# Bot token
+TOKEN = "your-bot-token-here"
+
+# Start the bot
 bot.run(TOKEN)
