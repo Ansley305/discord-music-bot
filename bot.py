@@ -58,7 +58,7 @@ async def play(ctx, url):
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
-            'key': 'FFmpegAudioFile',
+            'key': 'FFmpegAudioFile',  # Correct key
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
@@ -104,7 +104,8 @@ async def on_voice_state_update(member, before, after):
             await voice_client.disconnect()
             voice_client = None
         if after.channel:
-            voice_client = await after.channel.connect()
+            if not voice_client or not voice_client.is_connected():  # Check if bot is not already connected
+                voice_client = await after.channel.connect()
 
 @bot.event
 async def on_ready():
