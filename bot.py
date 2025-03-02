@@ -4,6 +4,8 @@ from discord.ext import commands
 import yt_dlp as youtube_dl
 import asyncio
 from dotenv import load_dotenv
+import threading
+from flask import Flask
 
 # Load environment variables from a .env file (for security, avoid hardcoding the bot token)
 load_dotenv()
@@ -20,6 +22,16 @@ ydl_opts = {
     'quiet': True,
     'noplaylist': True,
 }
+
+# Dummy Flask app to bind to a port
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_flask():
+    app.run(host="0.0.0.0", port=8080)
 
 # Command to join a voice channel
 @bot.command()
@@ -114,8 +126,10 @@ async def current(ctx):
 # Bot token (use an environment variable for security)
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# Start the bot
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("Error: No bot token found. Please ensure the DISCORD_TOKEN environment variable is set.")
+# Start Flask in a separate thread
+if __name__ == "__main__":
+    threading.Thread(target=run_flask).start()
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("Error: No bot token found. Please ensure the DISCORD_TOKEN environment variable is set.")
