@@ -24,6 +24,8 @@ ydl_opts = {
     'cookiefile': 'cookies.txt',  # Use YouTube cookies
     'sleep_interval': 5,  # Delay to avoid rate limits
     'max_sleep_interval': 10,
+    'ratelimit': 5000000,  # Limit speed (5MB/s) to avoid bans
+    'source_address': '0.0.0.0',  # Avoid regional restrictions
 }
 
 # Dummy Flask app to bind to a port
@@ -43,7 +45,7 @@ async def join(ctx):
     if not channel:
         await ctx.send("You need to join a voice channel first!")
         return
-    await channel.connect()
+    await channel.connect(reconnect=True, timeout=10)
 
 # Command to play a YouTube video/audio
 @bot.command()
@@ -110,9 +112,15 @@ async def stop(ctx):
 @bot.event
 async def on_voice_state_update(member, before, after):
     if member.id == bot.user.id:
-        if after.channel is None:
-            # If the bot was disconnected from the voice channel, reconnect
-            await member.guild.voice_client.connect()
+        voice_client = member.guild.voice_client
+        if not voice_client or after.channel is None:
+            return  # Do nothing if bot is not in a voice channel
+
+        try:
+            if not voice_client.is_connected():
+                await voice_client.connect(reconnect=True, timeout=10)
+        except Exception as e:
+            print(f"Error reconnecting to voice channel: {e}")
 
 # Command to queue a song (for later implementation of playlists and queues)
 @bot.command()
