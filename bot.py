@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import threading
 from flask import Flask
 
-# Load environment variables from a .env file (for security, avoid hardcoding the bot token)
+# Load environment variables from a .env file
 load_dotenv()
 
 # Initialize the bot
@@ -15,20 +15,20 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# FFmpeg options for yt-dlp (Updated with cookies & rate limiting)
+# FFmpeg options for yt-dlp
 ydl_opts = {
     'format': 'bestaudio/best',
     'outtmpl': 'downloads/%(id)s.%(ext)s',
     'quiet': True,
     'noplaylist': True,
-    'cookiefile': 'cookies.txt',  # Use YouTube cookies
-    'sleep_interval': 5,  # Delay to avoid rate limits
+    'cookiefile': 'cookies.txt',
+    'sleep_interval': 5,
     'max_sleep_interval': 10,
-    'ratelimit': 5000000,  # Limit speed (5MB/s) to avoid bans
-    'source_address': '0.0.0.0',  # Avoid regional restrictions
+    'ratelimit': 5000000,
+    'source_address': '0.0.0.0',
 }
 
-# Dummy Flask app to bind to a port
+# Flask app to keep the bot running
 app = Flask(__name__)
 
 @app.route('/')
@@ -41,39 +41,37 @@ def run_flask():
 # Command to join a voice channel
 @bot.command()
 async def join(ctx):
-    channel = ctx.author.voice.channel
+    channel = ctx.author.voice.channel if ctx.author.voice else None
     if not channel:
         await ctx.send("You need to join a voice channel first!")
         return
-    await channel.connect(reconnect=True, timeout=10)
+    try:
+        await channel.connect(reconnect=True, timeout=10)
+        await ctx.send(f"Joined {channel.name}")
+    except discord.ClientException:
+        await ctx.send("Already connected to a voice channel.")
+    except Exception as e:
+        await ctx.send(f"Error joining voice channel: {str(e)}")
 
-# Command to play a YouTube video/audio
+# Command to play audio
 @bot.command()
 async def play(ctx, url: str):
-    # Check if the bot is connected to a voice channel
     if not ctx.voice_client:
         await ctx.invoke(join)
-
-    # Set up the audio stream
     try:
         with youtube_dl.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
-            url2 = info['formats'][0]['url']
-            voice_client = ctx.voice_client
-
-            # Play the audio stream
-            voice_client.play(discord.FFmpegPCMAudio(url2))
-
+            url2 = info['url']
+            ctx.voice_client.play(discord.FFmpegPCMAudio(url2))
         await ctx.send(f"Now playing: {info['title']}")
-    except youtube_dl.utils.DownloadError as e:
-        await ctx.send(f"Error: {str(e)}\nTry using another link or checking your cookies file.")
+    except Exception as e:
+        await ctx.send(f"Error: {str(e)}")
 
 # Command to pause audio
 @bot.command()
 async def pause(ctx):
-    voice_client = ctx.voice_client
-    if voice_client and voice_client.is_playing():
-        voice_client.pause()
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.pause()
         await ctx.send("Audio paused.")
     else:
         await ctx.send("No audio is currently playing.")
@@ -81,9 +79,8 @@ async def pause(ctx):
 # Command to resume audio
 @bot.command()
 async def resume(ctx):
-    voice_client = ctx.voice_client
-    if voice_client and voice_client.is_paused():
-        voice_client.resume()
+    if ctx.voice_client and ctx.voice_client.is_paused():
+        ctx.voice_client.resume()
         await ctx.send("Audio resumed.")
     else:
         await ctx.send("Audio is not paused.")
@@ -91,53 +88,48 @@ async def resume(ctx):
 # Command to skip the current song
 @bot.command()
 async def skip(ctx):
-    voice_client = ctx.voice_client
-    if voice_client and voice_client.is_playing():
-        voice_client.stop()
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.stop()
         await ctx.send("Skipped the current song.")
     else:
         await ctx.send("No audio is currently playing.")
 
-# Command to stop the bot and disconnect from the voice channel
+# Command to disconnect from voice
 @bot.command()
 async def stop(ctx):
-    voice_client = ctx.voice_client
-    if voice_client:
-        await voice_client.disconnect()
+    if ctx.voice_client:
+        await ctx.voice_client.disconnect()
         await ctx.send("Disconnected from voice channel.")
     else:
         await ctx.send("Bot is not connected to any voice channel.")
 
-# Event to handle voice state updates and reconnect if necessary
+# Handle voice state updates
 @bot.event
 async def on_voice_state_update(member, before, after):
     if member.id == bot.user.id:
         voice_client = member.guild.voice_client
-        if not voice_client or after.channel is None:
-            return  # Do nothing if bot is not in a voice channel
-
-        try:
-            if not voice_client.is_connected():
+        if voice_client and not voice_client.is_connected():
+            try:
+                await voice_client.disconnect()
+                await asyncio.sleep(3)
                 await voice_client.connect(reconnect=True, timeout=10)
-        except Exception as e:
-            print(f"Error reconnecting to voice channel: {e}")
+            except Exception as e:
+                print(f"Error reconnecting to voice: {e}")
 
-# Command to queue a song (for later implementation of playlists and queues)
+# Command to queue a song (placeholder for future queue system)
 @bot.command()
 async def queue(ctx, url: str):
-    # A placeholder for queuing songs (implement playlist/queue later)
     await ctx.send(f"Queued song: {url}")
 
-# Command to display the bot's current playing song
+# Command to display the currently playing song
 @bot.command()
 async def current(ctx):
-    voice_client = ctx.voice_client
-    if voice_client and voice_client.is_playing():
-        await ctx.send(f"Currently playing: {voice_client.source.title}")
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        await ctx.send(f"Currently playing: {ctx.voice_client.source.title}")
     else:
         await ctx.send("No song is currently playing.")
 
-# Bot token (use an environment variable for security)
+# Get bot token from environment variables
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 # Start Flask in a separate thread
@@ -146,4 +138,4 @@ if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("Error: No bot token found. Please ensure the DISCORD_TOKEN environment variable is set.")
+        print("Error: No bot token found. Please set the DISCORD_TOKEN environment variable.")
